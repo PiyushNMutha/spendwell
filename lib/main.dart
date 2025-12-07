@@ -1,11 +1,17 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:csv/csv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:spendwell/budget_page.dart';
+import 'package:spendwell/recurring_payments_page.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'bill_reminders_page.dart';
+import 'database_helper.dart';
+import 'goals_page.dart';
+import 'insights_page.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,6 +19,7 @@ void main() {
 
 // Data model for transactions to make code cleaner
 class Transaction {
+  final int? id;
   final DateTime date;
   final String description;
   final double amount;
@@ -22,6 +29,7 @@ class Transaction {
   final String notes;
 
   Transaction({
+    this.id,
     required this.date,
     required this.description,
     required this.amount,
@@ -30,35 +38,31 @@ class Transaction {
     required this.paymentMethod,
     required this.notes,
   });
-}
 
-// A reusable function to read transactions from the CSV file
-Future<List<Transaction>> _readTransactionsFromCsv() async {
-  final directory = await getApplicationDocumentsDirectory();
-  final file = File('${directory.path}/transactions.csv');
-
-  if (!await file.exists()) {
-    return [];
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'date': date.toIso8601String(),
+      'description': description,
+      'amount': amount,
+      'type': type,
+      'category': category,
+      'paymentMethod': paymentMethod,
+      'notes': notes,
+    };
   }
 
-  try {
-    final csvContent = file.readAsStringSync();
-    final csvCodec = const CsvToListConverter();
-    final List<List<dynamic>> rows = csvCodec.convert(csvContent);
-    return rows.map((row) {
-      return Transaction(
-        date: DateTime.parse(row[0]),
-        description: row[1] as String,
-        amount: row[2] is double ? row[2] : double.tryParse(row[2].toString()) ?? 0.0,
-        type: row[3] as String,
-        category: row[4] as String,
-        paymentMethod: row[5] as String,
-        notes: row[6] as String,
-      );
-    }).toList();
-  } catch (e) {
-    // Return empty list on error
-    return [];
+  factory Transaction.fromMap(Map<String, dynamic> map) {
+    return Transaction(
+      id: map['id'],
+      date: DateTime.parse(map['date']),
+      description: map['description'],
+      amount: map['amount'],
+      type: map['type'],
+      category: map['category'],
+      paymentMethod: map['paymentMethod'] ?? '',
+      notes: map['notes'] ?? '',
+    );
   }
 }
 
@@ -214,6 +218,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  double balance = 0.0;
 
   final GlobalKey<_HomePageState> _homePageKey = GlobalKey<_HomePageState>();
 
@@ -224,16 +229,118 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _pages = <Widget>[
       HomePage(key: _homePageKey),
-      const DashboardPage(),
+//      const DashboardPage(),
       const ReportsPage(),
     ];
+    loadBalance();
+  }
+  Future<void> loadBalance() async {
+    double bal = await DatabaseHelper.instance.getBalance();
+    setState(() {
+      balance = bal;
+    });
   }
 
   void _onItemTapped(int index) {
+    if (index == 2) {
+      _showMoreMenu();   // 👈 our custom menu
+      return;            // do NOT change selectedIndex
+    }
+
     setState(() {
       _selectedIndex = index;
     });
   }
+
+  void _showMoreMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              // Title
+              Text(
+                "More Options",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // BUDGET
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: const Text("Budget"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const BudgetPage()));
+                },
+              ),
+
+              // GOALS
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text("Savings Goals"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const GoalsPage()));
+                },
+              ),
+
+              // BILL REMINDERS
+              ListTile(
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: const Text("Bill Reminders"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const BillRemindersPage()));
+                },
+              ),
+
+              // RECURRING PAYMENTS
+              ListTile(
+                leading: const Icon(Icons.autorenew_outlined),
+                title: const Text("Recurring Payments"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const RecurringPaymentsPage()));
+                },
+              ),
+
+              // INSIGHTS
+              ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: const Text("Monthly Insights"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const InsightsPage()));
+                },
+              ),
+
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -248,6 +355,26 @@ class _MainScreenState extends State<MainScreen> {
             color: Colors.white,
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                Icon(Icons.account_balance_wallet,
+                    color: Colors.white, size: 20),
+                SizedBox(width: 6),
+                Text(
+                  '₹ ${balance.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: _pages.elementAt(_selectedIndex),
@@ -275,13 +402,17 @@ class _MainScreenState extends State<MainScreen> {
                   icon: Icon(Icons.home, size: 20),
                   label: 'Home',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.dashboard, size: 20),
-                  label: 'Dashboard',
-                ),
+                // BottomNavigationBarItem(
+                //   icon: Icon(Icons.dashboard, size: 20),
+                //   label: 'Dashboard',
+                // ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.assignment, size: 20),
                   label: 'Reports',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.menu),
+                  label: 'More',
                 ),
               ],
               currentIndex: _selectedIndex,
@@ -307,7 +438,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _filename = 'transactions.csv';
 
   bool _isLoading = false;
   List<Transaction> _transactions = [];
@@ -322,218 +452,130 @@ class _HomePageState extends State<HomePage> {
     'Utilities',
     'Other'
   ];
+  final PageController _pageController = PageController(viewportFraction: 0.9);
+  int _currentPage = 0;
+  double balance = 0.0;
 
   @override
   void initState() {
     super.initState();
     _loadTransactions();
+    loadBalance();
   }
-
-  Future<String> _getFilePath() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return '${directory.path}/$_filename';
-  }
-
-  Future<List<List<dynamic>>> _readCsv() async {
-    final path = await _getFilePath();
-    final file = File(path);
-
-    if (!await file.exists()) {
-      return [];
-    }
-
-    try {
-      final csvContent = file.readAsStringSync();
-      final csvCodec = const CsvToListConverter();
-      return csvCodec.convert(csvContent);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error reading file: $e'),
-            backgroundColor: Colors.black,
-          ),
-        );
-      }
-      return [];
-    }
-  }
-
-  Future<void> _saveAllTransactions(List<List<dynamic>> allData) async {
-    try {
-      final path = await _getFilePath();
-      final file = File(path);
-      final csvString = const ListToCsvConverter().convert(allData);
-      await file.writeAsString(csvString);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving file: $e'),
-            backgroundColor: Colors.black,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _writeToCsv(Map<String, dynamic> data) async {
+  Future<void> loadBalance() async {
+    double bal = await DatabaseHelper.instance.getBalance();
     setState(() {
-      _isLoading = true;
+      balance = bal;
     });
-
-    try {
-      final existingData = await _readCsv();
-      final newData = [
-        [
-          DateTime.now().toIso8601String(),
-          data['description'],
-          data['amount'],
-          data['type'],
-          data['category'],
-          data['paymentMethod'],
-          data['notes']
-        ]
-      ];
-
-      final allData = [...existingData, ...newData];
-      await _saveAllTransactions(allData);
-      await _loadTransactions();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Transaction added successfully!'),
-            backgroundColor: const Color(0xFF2539ec),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding transaction: $e'),
-            backgroundColor: Colors.black,
-          ),
-        );
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  // New function to update a transaction in the CSV file
-  Future<void> _updateTransaction(Transaction oldTransaction, Map<String, dynamic> updatedData) async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final existingData = await _readCsv();
-      final updatedDataList = existingData.map((row) {
-        if (row[0] == oldTransaction.date.toIso8601String()) {
-          return [
-            row[0], // Keep the original timestamp
-            updatedData['description'],
-            updatedData['amount'],
-            updatedData['type'],
-            updatedData['category'],
-            updatedData['paymentMethod'],
-            updatedData['notes'],
-          ];
-        }
-        return row;
-      }).toList();
-
-      await _saveAllTransactions(updatedDataList);
-      await _loadTransactions();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Transaction updated successfully!'),
-            backgroundColor: const Color(0xFF2539ec),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating transaction: $e'),
-            backgroundColor: Colors.black,
-          ),
-        );
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _deleteTransaction(int index) async {
-    final originalTransactions = List<Transaction>.from(_transactions);
-    final transactionToDelete = _transactions[index];
-
-    setState(() {
-      _transactions.removeAt(index);
-    });
-
-    final fileTransactions = await _readCsv();
-    final originalIndex = fileTransactions.indexWhere((row) =>
-    row[0] == transactionToDelete.date.toIso8601String());
-
-    if (originalIndex != -1) {
-      fileTransactions.removeAt(originalIndex);
-      await _saveAllTransactions(fileTransactions);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Transaction deleted.'),
-          backgroundColor: Colors.black,
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'UNDO',
-            textColor: Colors.white,
-            onPressed: () {
-              final restoredList = List<Transaction>.from(_transactions);
-              restoredList.insert(index, transactionToDelete);
-              setState(() {
-                _transactions = restoredList;
-              });
-              _saveAllTransactions(restoredList.map((t) => [t.date.toIso8601String(), t.description, t.amount, t.type, t.category, t.paymentMethod, t.notes]).toList().reversed.toList());
-            },
-          ),
-        ),
-      );
-    }
   }
 
   Future<void> _loadTransactions() async {
     setState(() {
       _isLoading = true;
     });
-    final loadedTransactions = await _readTransactionsFromCsv();
+
+    final dbData = await DatabaseHelper.instance.fetchTransactions();
+    loadBalance();
+
     setState(() {
-      _transactions = loadedTransactions.reversed.toList();
+      _transactions = dbData.map((e) => Transaction.fromMap(e)).toList();
       _isLoading = false;
     });
   }
 
+  // ================= CHART DATA HELPERS =================
+
+  Map<int, Map<String, double>> _getMonthlyData() {
+    final now = DateTime.now();
+    final threeMonthsAgo = DateTime(now.year, now.month - 2, 1);
+    final filteredTransactions =
+    _transactions.where((t) => t.date.isAfter(threeMonthsAgo)).toList();
+
+    Map<int, Map<String, double>> monthlyData = {};
+
+    for (int i = 0; i < 3; i++) {
+      final date = DateTime(now.year, now.month - i, 1);
+      final monthKey = date.month;
+      monthlyData[monthKey] = {'income': 0.0, 'expense': 0.0};
+    }
+
+    for (var t in filteredTransactions) {
+      final monthKey = t.date.month;
+      if (!monthlyData.containsKey(monthKey)) continue;
+
+      if (t.type == 'Income') {
+        monthlyData[monthKey]!['income'] =
+            monthlyData[monthKey]!['income']! + t.amount;
+      } else if (t.type == 'Expense') {
+        monthlyData[monthKey]!['expense'] =
+            monthlyData[monthKey]!['expense']! + t.amount;
+      }
+    }
+
+    return monthlyData;
+  }
+
+  Map<String, double> _getCategoryData() {
+    final categoryData = <String, double>{};
+    final expenseTransactions =
+    _transactions.where((t) => t.type == 'Expense');
+    for (var t in expenseTransactions) {
+      categoryData[t.category] =
+          (categoryData[t.category] ?? 0) + t.amount;
+    }
+    return categoryData;
+  }
+
+  Color _getColorForCategory(String category) {
+    switch (category) {
+      case 'Food':
+        return Colors.orange;
+      case 'Travel':
+      case 'Trip':
+        return Colors.blue;
+      case 'Salary':
+        return Colors.green;
+      case 'Entertainment':
+        return Colors.purple;
+      case 'Groceries':
+        return Colors.brown;
+      case 'Utilities':
+        return Colors.cyan;
+      default:
+        return Colors.grey;
+    }
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _transactions.isEmpty
-        ? _buildWelcomeMessage()
-        : _buildTransactionList();
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+
+          // ---------------- CAROUSEL ADDED HERE ----------------
+          if (_transactions.isNotEmpty) _buildCarouselSection(),
+
+          const SizedBox(height: 10),
+
+          // ------------- ORIGINAL LOGIC (unchanged) -------------
+          _transactions.isEmpty
+              ? _buildWelcomeMessage()
+              : SizedBox(
+            height: MediaQuery.of(context).size.height,
+            child: _buildTransactionList(),
+          ),
+        ],
+      ),
+    );
   }
+
 
   Widget _buildWelcomeMessage() {
     return Center(
@@ -561,6 +603,141 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+  Widget _buildCarouselSection() {
+    final monthlyData = _getMonthlyData();
+    final categoryData = _getCategoryData();
+
+    return SizedBox(
+      height: 180,
+      child: PageView(
+        controller: _pageController,
+        onPageChanged: (i) => setState(() => _currentPage = i),
+        children: [
+          _buildLineChartCard(monthlyData),
+          _buildPieChartCard(categoryData),
+        ],
+      ),
+    );
+  }
+  Widget _buildLineChartCard(Map<int, Map<String, double>> monthlyData) {
+    final now = DateTime.now();
+    List<ChartData> chartData = [];
+
+    for (int i = 0; i < 3; i++) {
+      final month = now.month - i;
+      chartData.add(
+        ChartData(
+          DateFormat.MMM().format(DateTime(now.year, month)),
+          monthlyData[month]!['income']!,
+          monthlyData[month]!['expense']!,
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 6,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Text("Income vs Expense",
+                style: GoogleFonts.roboto(
+                    fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 2),
+            Expanded(
+              child: SfCartesianChart(
+                tooltipBehavior: TooltipBehavior(
+                  enable: true,
+                  tooltipPosition: TooltipPosition.pointer,
+                  textStyle: const TextStyle(fontSize: 10),
+                  canShowMarker: false,
+                ),
+                primaryXAxis: CategoryAxis(),
+                legend: Legend(
+                  isVisible: true,
+                  position: LegendPosition.right,
+                  alignment: ChartAlignment.near,
+                  iconHeight: 10,
+                  iconWidth: 10,
+                  textStyle: const TextStyle(fontSize: 8),
+                ),
+                series: <CartesianSeries>[
+                  LineSeries<ChartData, String>(
+                    dataSource: chartData,
+                    xValueMapper: (ChartData d, _) => d.x,
+                    yValueMapper: (ChartData d, _) => d.y1,
+                    color: Colors.green,
+                    name: "Income",
+                  ),
+                  LineSeries<ChartData, String>(
+                    dataSource: chartData,
+                    xValueMapper: (ChartData d, _) => d.x,
+                    yValueMapper: (ChartData d, _) => d.y2,
+                    color: Colors.red,
+                    name: "Expense",
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildPieChartCard(Map<String, double> categoryData) {
+    List<PieData> pieData = categoryData.entries.map((entry) {
+      return PieData(
+        entry.key,
+        entry.value,
+        _getColorForCategory(entry.key),
+      );
+    }).toList();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 6,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Text("Category-wise Spending",
+                style: GoogleFonts.roboto(
+                    fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 10),
+            Expanded(
+              child: SfCircularChart(
+                tooltipBehavior: TooltipBehavior(enable: true),
+                legend: Legend(
+                  isVisible: true,
+                  position: LegendPosition.right,
+                  alignment: ChartAlignment.near,
+                  iconHeight: 10,
+                  iconWidth: 10,
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                series: <CircularSeries>[
+                  DoughnutSeries<PieData, String>(
+                    dataSource: pieData,
+                    pointColorMapper: (PieData d, _) => d.color,
+                    xValueMapper: (PieData d, _) => d.x,
+                    yValueMapper: (PieData d, _) => d.y,
+                    dataLabelSettings:
+                    const DataLabelSettings(isVisible: true),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+
 
   Widget _buildTransactionList() {
     return ListView.builder(
@@ -604,7 +781,12 @@ class _HomePageState extends State<HomePage> {
           // Handles the delete action
           onDismissed: (direction) {
             if (direction == DismissDirection.startToEnd) {
-              _deleteTransaction(index);
+              DatabaseHelper.instance.deleteTransaction(transaction.id!)
+                  .then((_) {
+                _loadTransactions().then((_) {
+                  loadBalance();
+                });
+              });
             }
           },
           // Confirms the dismissal for editing
@@ -881,17 +1063,7 @@ class _HomePageState extends State<HomePage> {
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: _isLoading
-                            ? const Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: SizedBox(
-                            height: 40,
-                            width: 40,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2539ec)),
-                            ),
-                          ),
-                        )
+                            ? CircularProgressIndicator()
                             : FilledButton.icon(
                           key: const ValueKey('save_button'),
                           onPressed: () {
@@ -910,6 +1082,7 @@ class _HomePageState extends State<HomePage> {
                             }
 
                             final data = {
+                              'date': DateTime.now().toIso8601String(),
                               'description': _descriptionController.text,
                               'amount': double.tryParse(_amountController.text) ?? 0.0,
                               'type': _selectedType,
@@ -918,9 +1091,20 @@ class _HomePageState extends State<HomePage> {
                               'notes': _notesController.text,
                             };
                             if (transactionToEdit == null) {
-                              _writeToCsv(data);
+                              DatabaseHelper.instance.insertTransaction(data).then((_) {
+                                _loadTransactions().then((_) {
+                                  loadBalance();   // 👈 refresh balance
+                                });
+                              });
                             } else {
-                              _updateTransaction(transactionToEdit, data);
+                              DatabaseHelper.instance.updateTransaction(
+                                transactionToEdit.id!,
+                                data,
+                              ).then((_) {
+                                _loadTransactions().then((_) {
+                                  loadBalance();   // 👈 refresh balance
+                                });
+                              });
                             }
                             Navigator.pop(context);
                           },
@@ -994,12 +1178,15 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       _isLoading = true;
     });
-    final loadedTransactions = await _readTransactionsFromCsv();
+
+    final dbData = await DatabaseHelper.instance.fetchTransactions();
+
     setState(() {
-      _transactions = loadedTransactions;
+      _transactions = dbData.map((e) => Transaction.fromMap(e)).toList();
       _isLoading = false;
     });
   }
+
 
   Map<int, Map<String, double>> _getMonthlyData() {
     final now = DateTime.now();
@@ -1207,7 +1394,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-// Reports page with monthly dropdown and summary
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
 
@@ -1230,28 +1416,122 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() {
       _isLoading = true;
     });
-    final loadedTransactions = await _readTransactionsFromCsv();
+
+    final dbData = await DatabaseHelper.instance.fetchTransactions();
+
     setState(() {
-      _allTransactions = loadedTransactions;
+      _allTransactions = dbData.map((e) => Transaction.fromMap(e)).toList();
       _isLoading = false;
     });
   }
 
   List<String> get _availableMonths {
-    if (_allTransactions.isEmpty) {
-      return [];
-    }
+    if (_allTransactions.isEmpty) return [];
     final months = _allTransactions
         .map((t) => DateFormat('MMMM yyyy').format(t.date))
         .toSet()
         .toList();
-    // Sort months to be in chronological order
+
     months.sort((a, b) {
       final dateA = DateFormat('MMMM yyyy').parse(a);
       final dateB = DateFormat('MMMM yyyy').parse(b);
       return dateA.compareTo(dateB);
     });
+
     return months.reversed.toList();
+  }
+
+  List<Transaction> get _filteredTransactions {
+    if (_selectedMonth == null) return [];
+    return _allTransactions
+        .where(
+          (t) => DateFormat('MMMM yyyy').format(t.date) == _selectedMonth,
+    )
+        .toList();
+  }
+
+  // ---------------- EXPORT TO EXCEL (CSV) ----------------
+  Future<void> _exportCurrentMonthReport() async {
+    if (_selectedMonth == null || _filteredTransactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select a month with transactions to export.'),
+          backgroundColor: Colors.black,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Build CSV data
+      final rows = <List<dynamic>>[];
+
+      // Header row
+      rows.add([
+        'Date',
+        'Description',
+        'Type',
+        'Category',
+        'Payment Method',
+        'Notes',
+        'Amount',
+      ]);
+
+      // Data rows
+      for (final t in _filteredTransactions) {
+        rows.add([
+          DateFormat('dd-MM-yyyy').format(t.date),
+          t.description,
+          t.type,
+          t.category,
+          t.paymentMethod,
+          t.notes,
+          t.amount.toStringAsFixed(2),
+        ]);
+      }
+
+      final csvData = const ListToCsvConverter().convert(rows);
+
+      // Get directory
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to access storage.'),
+            backgroundColor: Colors.black,
+          ),
+        );
+        return;
+      }
+
+      final reportsDir = Directory('${dir.path}/SpendwellReports');
+      if (!await reportsDir.exists()) {
+        await reportsDir.create(recursive: true);
+      }
+
+      final safeMonthName = _selectedMonth!.replaceAll(' ', '_');
+      final filePath = '${reportsDir.path}/Spendwell_Report_$safeMonthName.csv';
+
+      final file = File(filePath);
+      await file.writeAsString(csvData);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Report exported:\n$filePath'),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to export: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -1279,171 +1559,282 @@ class _ReportsPageState extends State<ReportsPage> {
       );
     }
 
-    final List<Transaction> filteredTransactions = _selectedMonth == null
-        ? []
-        : _allTransactions
-        .where((t) => DateFormat('MMMM yyyy').format(t.date) == _selectedMonth)
-        .toList();
-
     double totalIncome = 0;
     double totalExpenditure = 0;
-
-    for (var t in filteredTransactions) {
+    for (var t in _filteredTransactions) {
       if (t.type == 'Income') {
         totalIncome += t.amount;
       } else {
         totalExpenditure += t.amount;
       }
     }
+    final net = totalIncome - totalExpenditure;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Dropdown for months
-          DropdownButtonFormField<String>(
-            decoration: InputDecoration(
-              labelText: "Select Month",
-              labelStyle: GoogleFonts.roboto(fontWeight: FontWeight.w500, color: Colors.black87),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: Colors.grey.shade400),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: Colors.grey.shade400),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: const BorderSide(color: Colors.blue, width: 1.5),
-              ),
+    return RefreshIndicator(
+      onRefresh: _loadTransactions,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ---------- Heading ----------
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Monthly Reports",
+                  style: GoogleFonts.roboto(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Icon(Icons.insert_chart_outlined, color: Colors.blue),
+              ],
             ),
-            value: _selectedMonth,
-            items: _availableMonths.map((String month) {
-              return DropdownMenuItem<String>(
-                value: month,
-                child: Text(month),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              setState(() {
-                _selectedMonth = newValue;
-              });
-            },
-          ),
-          const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-          // Monthly Summary
-          if (_selectedMonth != null)
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Summary',
-                      style: GoogleFonts.roboto(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Total Income:',
-                          style: GoogleFonts.roboto(fontSize: 16, color: Colors.green),
-                        ),
-                        Text(
-                          '₹${totalIncome.toStringAsFixed(2)}',
-                          style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                         Text(
-                          'Total Expenditure:',
-                          style: GoogleFonts.roboto(fontSize: 16, color: Colors.red),
-                        ),
-                        Text(
-                          '₹${totalExpenditure.toStringAsFixed(2)}',
-                          style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
-                        ),
-                      ],
-                    ),
-                  ],
+            // ---------- Month Dropdown ----------
+            DropdownButtonFormField<String>(
+              decoration: InputDecoration(
+                labelText: "Select Month",
+                labelStyle: GoogleFonts.roboto(
+                    fontWeight: FontWeight.w500, color: Colors.black87),
+                contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide(color: Colors.grey.shade400),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide(color: Colors.grey.shade400),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide:
+                  const BorderSide(color: Colors.blue, width: 1.5),
                 ),
               ),
-            ),
-          const SizedBox(height: 20),
-
-          // Transaction list
-          if (filteredTransactions.isNotEmpty) ...[
-            Text(
-              'Transactions',
-              style: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filteredTransactions.length,
-              itemBuilder: (context, index) {
-                final transaction = filteredTransactions.reversed.toList()[index];
-                final isExpense = transaction.type == 'Expense';
-                final amountColor = isExpense ? Colors.red : Colors.green;
-                final amountSign = isExpense ? '-' : '+';
-
-                final subtitleParts = <String>[];
-                if (transaction.category.isNotEmpty) {
-                  subtitleParts.add(transaction.category);
-                }
-                if (transaction.paymentMethod.isNotEmpty) {
-                  subtitleParts.add(transaction.paymentMethod);
-                }
-                if (transaction.notes.isNotEmpty) {
-                  subtitleParts.add(transaction.notes);
-                }
-                final combinedSubtitle = subtitleParts.join(' | ');
-
-                return Card(
-                  elevation: 2,
-                  margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: isExpense ? Colors.red.shade100 : Colors.green.shade100,
-                      child: Icon(
-                        isExpense ? Icons.arrow_upward : Icons.arrow_downward,
-                        color: amountColor,
-                      ),
-                    ),
-                    title: Text(
-                      transaction.description,
-                      style: GoogleFonts.roboto(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(combinedSubtitle),
-                    trailing: Text(
-                      '$amountSign₹${transaction.amount.toStringAsFixed(2)}',
-                      style: GoogleFonts.roboto(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: amountColor,
-                      ),
-                    ),
-                  ),
+              value: _selectedMonth,
+              items: _availableMonths.map((String month) {
+                return DropdownMenuItem<String>(
+                  value: month,
+                  child: Text(month),
                 );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedMonth = newValue;
+                });
               },
             ),
+            const SizedBox(height: 20),
+
+            // ---------- Summary + Export Button ----------
+            if (_selectedMonth != null)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Card(
+                  key: ValueKey(_selectedMonth),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.blue.shade50,
+                              ),
+                              child: const Icon(Icons.summarize,
+                                  color: Colors.blue),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Summary - $_selectedMonth',
+                              style: GoogleFonts.roboto(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Total Income',
+                                    style: GoogleFonts.roboto(
+                                        fontSize: 12, color: Colors.green)),
+                                Text(
+                                  '₹${totalIncome.toStringAsFixed(2)}',
+                                  style: GoogleFonts.roboto(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade700),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Total Expenditure',
+                                    style: GoogleFonts.roboto(
+                                        fontSize: 12, color: Colors.red)),
+                                Text(
+                                  '₹${totalExpenditure.toStringAsFixed(2)}',
+                                  style: GoogleFonts.roboto(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red.shade700),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('Net',
+                                    style: GoogleFonts.roboto(
+                                        fontSize: 14,
+                                        color: net >= 0
+                                            ? Colors.green
+                                            : Colors.red)),
+                                Text(
+                                  '₹${net.toStringAsFixed(2)}',
+                                  style: GoogleFonts.roboto(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: net >= 0
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Export button
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: OutlinedButton.icon(
+                            onPressed: _filteredTransactions.isEmpty
+                                ? null
+                                : _exportCurrentMonthReport,
+                            icon: const Icon(Icons.download),
+                            label: const Text("Export as Excel"),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue.shade800,
+                              side: BorderSide(color: Colors.blue.shade800),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 20),
+
+            // ---------- Transactions List ----------
+            if (_selectedMonth != null && _filteredTransactions.isNotEmpty) ...[
+              Text(
+                'Transactions',
+                style: GoogleFonts.roboto(
+                    fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _filteredTransactions.length,
+                itemBuilder: (context, index) {
+                  final transaction =
+                  _filteredTransactions.reversed.toList()[index];
+                  final isExpense = transaction.type == 'Expense';
+                  final amountColor =
+                  isExpense ? Colors.red : Colors.green;
+                  final amountSign = isExpense ? '-' : '+';
+
+                  final subtitleParts = <String>[];
+                  if (transaction.category.isNotEmpty) {
+                    subtitleParts.add(transaction.category);
+                  }
+                  if (transaction.paymentMethod.isNotEmpty) {
+                    subtitleParts.add(transaction.paymentMethod);
+                  }
+                  if (transaction.notes.isNotEmpty) {
+                    subtitleParts.add(transaction.notes);
+                  }
+                  final combinedSubtitle =
+                  subtitleParts.join(' | ');
+
+                  return Card(
+                    elevation: 2,
+                    margin: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 4.0),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isExpense
+                            ? Colors.red.shade100
+                            : Colors.green.shade100,
+                        child: Icon(
+                          isExpense
+                              ? Icons.arrow_upward
+                              : Icons.arrow_downward,
+                          color: amountColor,
+                        ),
+                      ),
+                      title: Text(
+                        transaction.description,
+                        style: GoogleFonts.roboto(
+                            fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        combinedSubtitle,
+                        style: GoogleFonts.roboto(),
+                      ),
+                      trailing: Text(
+                        '$amountSign₹${transaction.amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.roboto(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: amountColor,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+
+            if (_selectedMonth != null && _filteredTransactions.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 40.0),
+                  child: Text(
+                    "No transactions found for this month.",
+                    style: GoogleFonts.roboto(
+                        fontSize: 16, color: Colors.grey.shade700),
+                  ),
+                ),
+              ),
           ],
-        ],
+        ),
       ),
     );
   }
